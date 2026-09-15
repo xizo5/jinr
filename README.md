@@ -7,9 +7,9 @@
 
 | | |
 |---|---|
-| 在线试用 | <https://zuohb.github.io/jinr/app/> |
-| 官网介绍 | <https://zuohb.github.io/jinr/> |
-| 源码 | <https://github.com/zuohb/jinr> |
+| 在线试用 | <https://xizo5.github.io/jinr/app/> |
+| 官网介绍 | <https://xizo5.github.io/jinr/> |
+| 源码 | <https://github.com/xizo5/jinr> |
 
 > 产品定义见 [产品定义.md](./产品定义.md)，术语见 [CONTEXT.md](./CONTEXT.md)。
 > 这个文件夹里的 `app/` 就是整个软件：纯静态网页，没有安装、没有数据库、没有服务器。
