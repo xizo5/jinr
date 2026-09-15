@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>记哪儿</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-512.png">
+<link rel="apple-touch-icon" href="icons/icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#f2f2f7">
+<link rel="stylesheet" href="css/style.css">
+<script>
+/* 主题必须在首屏绘制前定好，否则会先闪一下浅色（或深色）。
+   逻辑跟 js/theme.js 一致，就三行；那边负责运行中切换，这边负责第一帧。 */
+(function () {
+  var BAR = { light: '#f2f2f7', dark: '#000000' };
+  var mode = 'system';
+  try { mode = localStorage.getItem('jinr.theme') || 'system'; } catch (e) { /* 隐私模式 */ }
+  if (mode !== 'light' && mode !== 'dark') mode = 'system';
+  var actual = mode === 'system'
+    ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light')
+    : mode;
+  var root = document.documentElement;
+  root.setAttribute('data-theme', actual);
+  root.setAttribute('data-theme-mode', mode);
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', BAR[actual]);
+})();
+</script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-row">
+    <button id="menuBtn" class="nav-btn" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="drawer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16"></path>
+      </svg>
+      <span id="menuDot" class="nav-dot" hidden></span>
+    </button>
+    <h1 class="large-title" id="navTitle">记哪儿</h1>
+  </div>
+</header>
+
+<!-- 侧边栏：主导航都收在这里 -->
+<div id="scrim" class="scrim"></div>
+<aside id="drawer" class="drawer" aria-label="主导航" aria-hidden="true" inert>
+  <div class="drawer-head">
+    <span class="drawer-avatar" aria-hidden="true">
+      <svg viewBox="0 0 44 44">
+        <rect x="2" y="2" width="40" height="40" rx="13" fill="currentColor"></rect>
+        <circle cx="16" cy="19" r="2.9" fill="#fff"></circle>
+        <circle cx="28" cy="19" r="2.9" fill="#fff"></circle>
+        <path d="M17 27.5q5 3.6 10 0" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"></path>
+      </svg>
+    </span>
+    <span class="drawer-brand">
+      <strong>记哪儿</strong>
+      <em>随口说一句，我来记</em>
+    </span>
+  </div>
+
+  <nav class="drawer-nav">
+    <button id="navTalkBtn" class="drawer-item" type="button" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3.5" y="4" width="17" height="13" rx="4"></rect>
+        <path d="M8.5 17v3.5L12.5 17"></path>
+      </svg>
+      <span>说话</span>
+    </button>
+    <button id="navMemBtn" class="drawer-item" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="4.5" y="3.5" width="15" height="17" rx="3.6"></rect>
+        <path d="M9.2 3.5v17"></path>
+      </svg>
+      <span>记忆</span>
+      <span id="memCount" class="drawer-badge" hidden></span>
+    </button>
+  </nav>
+
+  <!-- 设置不是「页面」，是弹层，所以跟主导航分开，钉在抽屉底部。
+       margin-top:auto 撑开中间那段空白，层级一眼分得开 -->
+  <div class="drawer-foot">
+    <button id="navSetBtn" class="drawer-item" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.2"></circle>
+        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"></path>
+      </svg>
+      <span>设置</span>
+    </button>
+  </div>
+</aside>
+
+<!-- 双页路由：#/ 说话 ⇄ #/mem 记忆 -->
+<main class="pages at-talk" id="pages">
+
+    <!-- 第 1 页：纯交互 -->
+    <section class="page page-talk" id="pageTalk">
+      <div class="talk-wrap">
+        <section id="resultArea" aria-live="polite"></section>
+
+        <div class="asst-zone">
+          <svg id="asst" class="asst" data-state="idle" viewBox="0 0 140 140" aria-hidden="true">
+            <ellipse class="asst-shadow" cx="70" cy="124" rx="26" ry="5"/>
+            <g class="asst-body">
+              <rect class="asst-skin" x="35" y="26" width="70" height="70" rx="24"/>
+              <ellipse class="asst-shine" cx="58" cy="42" rx="16" ry="8"/>
+              <g class="asst-eyes">
+                <circle class="eye eye-l" cx="56" cy="56" r="5"/>
+                <circle class="eye eye-r" cx="84" cy="56" r="5"/>
+                <path class="eye-happy" d="M50 58 q6 -8 12 0"/>
+                <path class="eye-happy" d="M78 58 q6 -8 12 0"/>
+              </g>
+              <path class="asst-mouth" d="M62 74 q8 6 16 0"/>
+              <circle class="asst-mouth-o" cx="70" cy="77" r="5"/>
+            </g>
+            <g class="asst-waves">
+              <path d="M22 52 a22 22 0 0 1 0 20"/>
+              <path d="M12 44 a34 34 0 0 1 0 36"/>
+              <path d="M118 52 a22 22 0 0 0 0 20"/>
+              <path d="M128 44 a34 34 0 0 0 0 36"/>
+            </g>
+            <g class="asst-dots">
+              <circle cx="56" cy="16" r="3.5"/>
+              <circle cx="70" cy="10" r="4.5"/>
+              <circle cx="84" cy="16" r="3.5"/>
+            </g>
+          </svg>
+          <p id="statusLine" class="status">随口说一句，我来记</p>
+        </div>
+
+        <div class="input-bar" id="inputBar">
+          <button id="modeBtn" class="mode-btn" type="button" aria-label="切换语音或键盘">
+            <svg class="ic-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3"></rect>
+              <path d="M5 11a7 7 0 0 0 14 0"></path>
+              <path d="M12 18v3"></path>
+            </svg>
+            <svg class="ic-kb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" hidden>
+              <rect x="3" y="6" width="18" height="12" rx="2.5"></rect>
+              <path d="M7 15h10"></path>
+              <path d="M7 10h.01M11 10h.01M15 10h.01M17 10h.01M7 12.5h.01M11 12.5h.01M15 12.5h.01M17 12.5h.01"></path>
+            </svg>
+          </button>
+          <div class="bar-field">
+            <input id="textInput" type="text" placeholder="或者打个字…" autocomplete="off">
+            <button id="micBtn" class="hold-btn" type="button" hidden>按住 说话</button>
+            <button id="sendTextBtn" class="send-btn" type="button" aria-label="发送">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V5"></path>
+                <path d="M5 12l7-7 7 7"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 第 2 页：所有记忆 -->
+    <section class="page page-mem" id="pageMem">
+      <section class="group">
+        <div class="group-head">
+          <h2>助理的总结</h2>
+          <span id="digestMeta" class="count"></span>
+        </div>
+        <div class="card">
+          <ul id="digestList" class="rows"></ul>
+        </div>
+        <div class="sum-row">
+          <button id="summaryBtn" class="text-btn" type="button">让助理写段总结</button>
+        </div>
+        <p id="summaryText" class="summary-text" hidden></p>
+      </section>
+
+      <section class="group">
+        <div class="group-head">
+          <h2>原记录</h2>
+          <span id="activeCount" class="count"></span>
+        </div>
+        <div class="card">
+          <ul id="recordList" class="rows"></ul>
+        </div>
+      </section>
+
+      <details id="ignoredDetails" class="group ignored-group">
+        <summary class="group-head">
+          <h2>被忽略的</h2>
+          <span id="ignoredCount" class="count"></span>
+        </summary>
+        <div class="card">
+          <ul id="ignoredList" class="rows"></ul>
+        </div>
+      </details>
+
+      <div class="backup-row">
+        <button id="exportBtn" type="button">导出备份</button>
+        <button id="importBtn" type="button">导入备份</button>
+        <input id="importFile" type="file" accept=".json,application/json" hidden>
+      </div>
+    </section>
+
+</main>
+
+<!-- 设置（底部弹层） -->
+<dialog id="settingsDlg" class="dlg">
+  <div class="grabber"></div>
+  <div class="dlg-head">
+    <h2>设置</h2>
+    <button value="cancel" type="button" class="done-btn">完成</button>
+  </div>
+  <div class="seg-wrap">
+    <span class="seg-label">外观</span>
+    <div class="seg" id="themeSeg" role="group" aria-label="外观">
+      <button type="button" data-mode="system" aria-pressed="true">跟随系统</button>
+      <button type="button" data-mode="light" aria-pressed="false">浅色</button>
+      <button type="button" data-mode="dark" aria-pressed="false">深色</button>
+    </div>
+  </div>
+  <p class="hint">密钥只保存在这台设备的浏览器里，不会上传到任何别的地方。</p>
+  <div class="card" style="padding: 4px 14px 8px; margin-bottom: 10px;">
+    <label class="field">
+      <span class="label">DeepSeek API Key</span>
+      <input id="setDeepseekKey" type="password" placeholder="sk-...">
+    </label>
+    <label class="field">
+      <span class="label">模型（一般不用改）</span>
+      <input id="setModel" type="text" placeholder="deepseek-chat">
+    </label>
+    <label class="field">
+      <span class="label">API 中转地址（可选，被浏览器拦截时才填）</span>
+      <input id="setBaseUrl" type="url" placeholder="https://你的中转.workers.dev">
+    </label>
+  </div>
+  <details class="asr-cfg">
+    <summary>腾讯云语音识别（不填则用手机自带识别 / 打字）</summary>
+    <div class="card" style="padding: 4px 14px 8px; margin: 8px 0 4px;">
+      <label class="field">
+        <span class="label">AppID</span>
+        <input id="setTencentAppId" type="text" inputmode="numeric" placeholder="14 开头的数字">
+      </label>
+      <label class="field">
+        <span class="label">SecretId</span>
+        <input id="setTencentSecretId" type="text" placeholder="AKID...">
+      </label>
+      <label class="field">
+        <span class="label">SecretKey</span>
+        <input id="setTencentSecretKey" type="password" placeholder="密钥">
+      </label>
+    </div>
+  </details>
+  <p id="settingsMsg" class="msg"></p>
+  <div class="dlg-actions">
+    <button id="saveSettingsBtn" class="btn-primary" type="button" style="width:100%">保存</button>
+  </div>
+</dialog>
+
+<!-- 编辑记录（底部弹层） -->
+<dialog id="editDlg" class="dlg">
+  <div class="grabber"></div>
+  <div class="dlg-head">
+    <h2 id="editTitle">修改记录</h2>
+    <button value="cancel" type="button" class="done-btn">完成</button>
+  </div>
+  <p id="editMeta" class="meta-line"></p>
+  <div class="card" style="padding: 4px 14px 8px;">
+    <label class="field" id="editItemWrap">
+      <span class="label">东西</span>
+      <input id="editItem" type="text" placeholder="大门钥匙">
+    </label>
+    <label class="field" id="editPlaceWrap">
+      <span class="label">放在哪</span>
+      <input id="editPlace" type="text" placeholder="消防阀门里">
+    </label>
+    <label class="field" id="editTextWrap">
+      <span class="label">内容</span>
+      <textarea id="editText" rows="3"></textarea>
+    </label>
+  </div>
+  <p class="hint">改过位置的历史会保留在记录里。</p>
+  <div class="dlg-actions spread">
+    <button id="editDeleteBtn" class="btn-danger" type="button">删除</button>
+    <span class="stack">
+      <button id="editToggleBtn" class="btn-secondary" type="button">忽略</button>
+      <button id="editSaveBtn" class="btn-primary" type="button">保存</button>
+    </span>
+  </div>
+</dialog>
+
+<!-- 麦克风开不了时的排查弹层 -->
+<dialog id="micHelpDlg" class="dlg">
+  <div class="grabber"></div>
+  <div class="dlg-head">
+    <h2>麦克风没打开</h2>
+    <button value="cancel" type="button" class="done-btn">关闭</button>
+  </div>
+  <p id="micDiag" class="msg" hidden></p>
+  <p class="hint">如果不是上面那条，通常是两层开关有一层没开。按顺序检查：</p>
+  <div class="card" style="padding: 4px 14px 10px;">
+    <p class="hint"><b>① 浏览器站点权限：</b>点地址栏左侧的 🔒 / ⓘ 图标 → 麦克风 → 允许 → 刷新页面</p>
+    <p class="hint"><b>② 系统总开关：</b>Windows：设置 → 隐私和安全性 → 麦克风，打开「麦克风访问」和「允许应用访问你的麦克风」。安卓：设置 → 应用 → 浏览器 → 权限 → 麦克风</p>
+    <p class="hint"><b>iPhone：</b>设置 → App → Safari → 麦克风 → 允许（用 Chrome/Edge 打开的请改用 Safari）</p>
+    <p class="hint"><b>从微信/QQ 里点开的链接：</b>点右上角 ⋯ → 在浏览器打开</p>
+  </div>
+  <p class="hint">改好后回来再按住说话；还不行就重开一次页面。</p>
+  <div class="dlg-actions spread">
+    <button id="micReloadBtn" class="btn-secondary" type="button">重开页面</button>
+    <button id="micRetryBtn" class="btn-primary" type="button">知道了</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/model.js"></script>
+<script src="js/prompt.js"></script>
+<script src="js/audio-utils.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/store.js"></script>
+<script src="js/recorder.js"></script>
+<script src="js/asr.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/backup.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

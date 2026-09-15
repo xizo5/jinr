@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>记哪儿 —— 随口说一句，东西放哪我替你记住</title>
+<meta name="description" content="记哪儿是一个免费开源的语音记事 PWA：按住说一句「钥匙塞消防阀门里了」，以后问它「我钥匙呢」，它带着你当时那句话和时间答你。没有服务器，记录只存在你自己的设备里。">
+<meta name="theme-color" content="#eef0f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101319" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="app/icons/icon-512.png">
+<link rel="apple-touch-icon" href="app/icons/icon-512.png">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="记哪儿 —— 随口说一句，东西放哪我替你记住">
+<meta property="og:description" content="免费开源的语音记事 PWA。没有服务器，数据只存在你的设备里。">
+<meta property="og:image" content="app/icons/icon-512.png">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+/* ─────────────────────────────────────────────────────────────
+   记哪儿 · 官网
+   设计：备忘纸 + 荧光笔。冷白纸底、近黑墨字、荧光黄只用来划重点，
+   一个色只干一件事。演示卡是唯一的主角，其余全部安静。
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --paper:   #eef0f3;
+  --paper-2: #e3e7ee;
+  --card:    #ffffff;
+  --ink:     #12151c;
+  --ink-2:   #4d5563;
+  --ink-3:   #8b93a1;
+  --marker:  #f2e94a;
+  --hl-bg:   #f2e94a;   /* 荧光笔留下的那道痕。跟 --marker 分开：深色下两者必须不同 */
+  --line:    #d3d9e2;
+  --accent:  #1c3f8f;
+  --bubble:  #eef0f3;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI",
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Courier New", monospace;
+
+  --wrap: 1080px;
+  --r: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:   #101319;
+    --paper-2: #171c24;
+    --card:    #171c24;
+    --ink:     #eceff4;
+    --ink-2:   #a6aebc;
+    --ink-3:   #6b7484;
+    --marker:  #d2c93e;
+    /* 深色底上是白字，实心亮黄会让字的下半截看不清。用一层压暗的黄蒙版：
+       白字对比度 6.7:1，而且更像真荧光笔——划过去只是染色，字还是本色。 */
+    --hl-bg:   #545326;
+    --line:    #262c37;
+    --accent:  #8bacf9;
+    --bubble:  #1e242e;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.8;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── 顶栏 ───────────────────────────────────────────────── */
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color .2s;
+}
+.top.stuck { border-bottom-color: var(--line); }
+
+.top-in {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  height: 62px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: -.01em;
+  margin-right: auto;
+}
+.brand svg { display: block; width: 26px; height: 26px; border-radius: 8px; }
+
+.top-nav {
+  display: flex;
+  gap: 26px;
+  font-size: .875rem;
+  color: var(--ink-2);
+}
+.top-nav a { border-bottom: 1px solid transparent; padding-bottom: 2px; }
+.top-nav a:hover { color: var(--ink); border-bottom-color: var(--ink-3); }
+
+/* ── 按钮 ───────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .5em;
+  padding: .7rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  font: inherit;
+  font-size: .9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background .16s, color .16s, border-color .16s, transform .16s;
+  white-space: nowrap;
+}
+.btn-sm { padding: .5rem .95rem; font-size: .875rem; }
+.btn-primary { background: var(--ink); color: var(--paper); }
+.btn-primary:hover { background: var(--marker); color: #12151c; }
+.btn-ghost { border-color: var(--line); color: var(--ink); }
+.btn-ghost:hover { border-color: var(--ink); }
+.btn-arrow { transition: transform .16s; }
+.btn:hover .btn-arrow { transform: translateX(3px); }
+
+/* ── 荧光笔 ─────────────────────────────────────────────
+   画在文字下面，不是背景色。--z 保证它不跑到页面底下去。 */
+
+.hl {
+  position: relative;
+  z-index: 0;
+  white-space: nowrap;
+}
+.hl::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -.14em;
+  right: -.14em;
+  top: 46%;
+  bottom: 4%;
+  background: var(--hl-bg);
+  border-radius: 3px 7px 4px 8px / 6px 3px 7px 4px;
+  transform: rotate(-.7deg);
+}
+
+/* ── Hero ───────────────────────────────────────────────── */
+
+.hero { padding: 72px 0 84px; }
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.12fr .88fr;
+  gap: 52px;
+  align-items: center;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: .75rem;
+  letter-spacing: .1em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  margin: 0 0 22px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.eyebrow .dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--marker);
+  outline: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
+}
+
+/* 断行由 <br> 手动控制：中文自动断行会拆开「东西放哪」这个词组，
+   而且大字号的孤字（一行只剩一两个字）非常难看。 */
+h1 {
+  margin: 0 0 22px;
+  font-size: clamp(1.95rem, 4.5vw, 3.05rem);
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: -.035em;
+}
+
+.lede {
+  margin: 0 0 32px;
+  font-size: clamp(1rem, 1.5vw, 1.0625rem);
+  line-height: 1.85;
+  color: var(--ink-2);
+  max-width: 33em;
+}
+.lede b { color: var(--ink); font-weight: 600; }
+.lede q { font-style: normal; }
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+
+.fineprint {
+  margin: 0;
+  font-size: .8125rem;
+  line-height: 1.75;
+  color: var(--ink-3);
+}
+.fineprint a { border-bottom: 1px solid var(--line); }
+.fineprint a:hover { color: var(--ink); border-bottom-color: var(--ink-3); }
+
+/* ── 演示卡（全页唯一的主角） ──────────────────────────── */
+
+.demo-col { display: flex; justify-content: center; }
+
+.phone {
+  width: 100%;
+  max-width: 342px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  padding: 16px 14px 18px;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent),
+    0 18px 42px -18px color-mix(in srgb, var(--ink) 26%, transparent);
+}
+
+.phone-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.phone-bar .ham { width: 17px; height: 17px; color: var(--ink-2); flex: none; }
+.phone-bar strong { font-size: .9375rem; letter-spacing: -.01em; }
+.phone-bar .count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: .6875rem;
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 16px 2px 16px;
+  min-height: 268px;
+}
+
+.bubble {
+  max-width: 85%;
+  padding: 9px 13px;
+  border-radius: 15px;
+  font-size: .875rem;
+  line-height: 1.65;
+}
+.bubble.me {
+  align-self: flex-end;
+  background: var(--ink);
+  color: var(--paper);
+  border-bottom-right-radius: 5px;
+}
+.bubble.it {
+  align-self: flex-start;
+  background: var(--bubble);
+  color: var(--ink);
+  border-bottom-left-radius: 5px;
+}
+.bubble.it b { font-weight: 700; }
+
+.rec {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  font-size: .75rem;
+  color: var(--ink-2);
+  letter-spacing: .01em;
+}
+.rec .pin { width: 12px; height: 12px; flex: none; color: var(--accent); }
+.rec .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec time {
+  margin-left: auto;
+  padding-left: 10px;
+  font-family: var(--mono);
+  font-size: .6875rem;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.shown { margin: .5em 0 0; }
+
+/* 出处小字：整个产品最重要的一句话 */
+.source {
+  display: block;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--line);
+  font-size: .75rem;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+.source .src-q { display: block; color: var(--ink-2); }
+
+.phone-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+}
+.talk-btn {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+.talk-btn svg { width: 24px; height: 24px; }
+.talk-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  animation: ring 2.6s ease-out infinite;
+}
+@keyframes ring {
+  0%   { transform: scale(1);   opacity: .55; }
+  70%  { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+.phone-foot .hint {
+  font-size: .75rem;
+  color: var(--ink-3);
+  line-height: 1.5;
+  max-width: 11em;
+}
+
+/* 进场：一条一条冒出来，像真的在说话 */
+.rise { animation: rise .55s cubic-bezier(.22,.9,.3,1) both; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(9px); }
+  to   { opacity: 1; transform: none; }
+}
+.d1 { animation-delay: .12s; }
+.d2 { animation-delay: .30s; }
+.d3 { animation-delay: .48s; }
+.d4 { animation-delay: .66s; }
+.d5 { animation-delay: .84s; }
+.d6 { animation-delay: 1.02s; }
+
+/* ── 分段 ───────────────────────────────────────────────── */
+
+.sec { padding: 72px 0; border-top: 1px solid var(--line); }
+.sec:first-of-type { border-top-color: transparent; }
+
+.sec-head { margin-bottom: 42px; max-width: 46em; }
+.sec-kicker {
+  font-family: var(--mono);
+  font-size: .6875rem;
+  letter-spacing: .12em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+.sec h2 {
+  margin: 0 0 14px;
+  font-size: clamp(1.5rem, 2.9vw, 2.05rem);
+  line-height: 1.35;
+  font-weight: 800;
+  letter-spacing: -.03em;
+}
+.sec-sub { margin: 0; color: var(--ink-2); font-size: .9375rem; }
+
+/* ── 三步（真的是序列，所以编号是有意义的） ────────────── */
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.step {
+  background: var(--paper);
+  padding: 26px 24px 30px;
+}
+.step-n {
+  font-family: var(--mono);
+  font-size: .75rem;
+  color: var(--ink-3);
+  letter-spacing: .08em;
+}
+.step h3 {
+  margin: 12px 0 10px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+.step p { margin: 0; font-size: .875rem; color: var(--ink-2); line-height: 1.8; }
+.step .quote {
+  display: block;
+  margin-top: 14px;
+  padding-left: 11px;
+  border-left: 2px solid var(--marker);
+  font-size: .8125rem;
+  color: var(--ink-3);
+}
+
+/* ── 特性 ───────────────────────────────────────────────── */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px 32px;
+}
+.fact h3 {
+  margin: 0 0 7px;
+  font-size: .9375rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fact h3::before {
+  content: "";
+  width: 7px; height: 7px;
+  border-radius: 2px;
+  background: var(--marker);
+  outline: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+  flex: none;
+}
+.fact p { margin: 0; font-size: .875rem; color: var(--ink-2); line-height: 1.8; }
+
+/* ── 收尾 ───────────────────────────────────────────────── */
+
+.end {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  padding: 40px 36px;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 32px;
+  align-items: center;
+}
+.end h2 { margin: 0 0 10px; font-size: clamp(1.4rem, 2.6vw, 1.85rem); font-weight: 800; letter-spacing: -.03em; line-height: 1.35; }
+.end p { margin: 0; font-size: .875rem; color: var(--ink-2); }
+.end-acts { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.end-acts .btn { justify-content: center; }
+
+.foot {
+  border-top: 1px solid var(--line);
+  padding: 26px 0 40px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: center;
+  font-size: .8125rem;
+  color: var(--ink-3);
+}
+.foot a:hover { color: var(--ink); }
+.foot .sep { margin-left: auto; }
+
+/* ── 窄屏 ───────────────────────────────────────────────── */
+
+@media (max-width: 920px) {
+  .top-nav { display: none; }
+  .hero { padding: 44px 0 60px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 44px; }
+  .demo-col { order: 2; }
+  .steps, .facts { grid-template-columns: 1fr; }
+  .steps { gap: 1px; }
+  .end { grid-template-columns: 1fr; padding: 30px 24px; }
+  .sec { padding: 56px 0; }
+  .phone { max-width: 360px; }
+}
+
+@media (max-width: 420px) {
+  .bubble { max-width: 92%; }
+  h1 { letter-spacing: -.028em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<header class="top" id="top">
+  <div class="wrap top-in">
+    <a class="brand" href="./">
+      <svg viewBox="0 0 44 44" aria-hidden="true">
+        <rect x="0" y="0" width="44" height="44" rx="13" fill="#12151c"></rect>
+        <circle cx="16" cy="19" r="2.9" fill="#fff"></circle>
+        <circle cx="28" cy="19" r="2.9" fill="#fff"></circle>
+        <path d="M17 27.5q5 3.6 10 0" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"></path>
+      </svg>
+      记哪儿
+    </a>
+
+    <nav class="top-nav" aria-label="页面导航">
+      <a href="#how">怎么用</a>
+      <a href="#why">它靠谱吗</a>
+      <a href="#start">开始用</a>
+    </nav>
+
+    <a class="btn btn-primary btn-sm" href="./app/">打开应用<span class="btn-arrow" aria-hidden="true">→</span></a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Hero ─────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+
+      <div>
+        <p class="eyebrow">
+          <span class="dot" aria-hidden="true"></span>
+          开源 · 免费 · 不用服务器
+        </p>
+
+        <h1>随口说一句，<br><span class="hl">东西放哪</span>就记住了</h1>
+
+        <p class="lede">
+          按住按钮说一声「大门钥匙塞消防阀门里了」，松开手就完事——不用分类、不用确认。
+          哪天你忘了，问它一句「我钥匙呢」，它<b>带着你当时那句话和时间</b>答你：
+          「在消防阀门里。」
+        </p>
+
+        <div class="cta-row">
+          <a class="btn btn-primary" href="./app/">在线试用<span class="btn-arrow" aria-hidden="true">→</span></a>
+          <a class="btn btn-ghost" href="https://github.com/zuohb/jinr" id="repoBtn" rel="noopener">看源码<span aria-hidden="true">↗</span></a>
+        </div>
+
+        <p class="fineprint">
+          MIT 协议，随便用随便改 · 记录只存在你自己这台设备里 · 不用注册、没有账号
+        </p>
+      </div>
+
+      <div class="demo-col">
+        <!-- 这不是截图，是照着应用真做出来的演示：一句话进去，一句话出来。 -->
+        <div class="phone" role="img"
+             aria-label="记哪儿应用界面演示：用户说「大门钥匙塞消防阀门里了」，应用记下钥匙在消防阀门；用户随后问「我钥匙呢」，应用答「在消防阀门里」，并附上原话和日期作为出处。">
+
+          <div class="phone-bar">
+            <svg class="ham" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16"></path>
+            </svg>
+            <strong>记哪儿</strong>
+            <span class="count">12 条</span>
+          </div>
+
+          <div class="thread">
+            <p class="bubble me rise d1">大门钥匙塞消防阀门里了</p>
+
+            <div class="rise d2">
+              <span class="rec">
+                <svg class="pin" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/>
+                </svg>
+                <span class="txt">记下了 · 钥匙 → 消防阀门</span>
+                <time>6月3日</time>
+              </span>
+            </div>
+
+            <p class="bubble me rise d3">我钥匙呢？</p>
+
+            <p class="bubble it rise d4">
+              <b>在消防阀门里。</b>
+              <span class="source">
+                你 6 月 3 日说的：<span class="src-q">「大门钥匙塞消防阀门里了」</span>
+              </span>
+            </p>
+          </div>
+
+          <div class="phone-foot rise d5">
+            <span class="talk-btn" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <rect x="9" y="2" width="6" height="12" rx="3"/>
+                <path d="M5 11a7 7 0 0 0 14 0h-2a5 5 0 0 1-10 0H5Zm6 7v4h2v-4h-2Z"/>
+              </svg>
+            </span>
+            <span class="hint">按住说话<br>问也是一样</span>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 怎么用 ───────────────────────────────────────── -->
+  <section class="sec" id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="sec-kicker">它其实只有三步</p>
+        <h2>说一句、存下来、问回去</h2>
+        <p class="sec-sub">没有文件夹、没有标签、没有整理这一步。你要做的只是说话。</p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <span class="step-n">第一步</span>
+          <h3>说</h3>
+          <p>按住大按钮，说完松手。它当场就开始记，不弹确认框、不问你「这是新事还是旧事」。</p>
+          <span class="quote">「快递放门口鞋柜上了」</span>
+        </div>
+        <div class="step">
+          <span class="step-n">第二步</span>
+          <h3>存</h3>
+          <p>它自己判断：是新事就新建；原样重说一遍就<b>不记第二遍</b>；东西换了地方就自动更新，旧位置留进历史 —— 被忽略的话永远看得见、能一键恢复。</p>
+          <span class="quote">「钥匙挪抽屉了」→ 钥匙：消防阀门 → 抽屉</span>
+        </div>
+        <div class="step">
+          <span class="step-n">第三步</span>
+          <h3>问</h3>
+          <p>同一个按钮，直接问。答案<b>必须带出处</b>：你当时那句话、那天的日期。所以它答得对不对，你自己一眼能核对。</p>
+          <span class="quote">「我钥匙呢」→ 在抽屉里（你 9 月 2 日说的）</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 它靠谱吗 ─────────────────────────────────────── -->
+  <section class="sec" id="why">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="sec-kicker">把丑话说在前面</p>
+        <h2>它没有服务器，这是优点也是缺点</h2>
+        <p class="sec-sub">整个软件就是一个网页，你的记录存在自己手机的浏览器里。所以它不收集你任何东西，也不替你做云端备份 —— 这件事要你自己动手。</p>
+      </div>
+
+      <div class="facts">
+        <div class="fact">
+          <h3>零服务器</h3>
+          <p>没有后端、没有数据库、没有账号系统。原作者也不知道你记了什么，因为东西根本没往外发。</p>
+        </div>
+        <div class="fact">
+          <h3>记录不出设备</h3>
+          <p>你说的话会发给 AI 做理解，但记录本身存进本机浏览器的 IndexedDB。代码里没有任何密钥，要用得你自己去申请。</p>
+        </div>
+        <div class="fact">
+          <h3>重复的不会记两遍</h3>
+          <p>同样一句说两次，它只记一条，但被忽略的那次留痕可见，随时能恢复。东西挪了位置，旧位置进历史不丢。</p>
+        </div>
+        <div class="fact">
+          <h3>一键导出备份</h3>
+          <p>导出成一个 JSON 文件存好。换手机、清了浏览器数据，都能导回来。建议每个星期导一次。</p>
+        </div>
+        <div class="fact">
+          <h3>能装进桌面</h3>
+          <p>是个 PWA。iPhone 用 Safari、安卓用 Chrome 添加到主屏幕，从图标打开就像个 App，iOS 也不会因为你 7 天没开就清掉数据。</p>
+        </div>
+        <div class="fact">
+          <h3>免费开源</h3>
+          <p>MIT 协议。自己部署一份、改着玩、卖给谁，都随你，不用问原作者。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 开始用 ───────────────────────────────────────── -->
+  <section class="sec" id="start">
+    <div class="wrap">
+      <div class="end">
+        <div>
+          <h2>现在就能用，不用等</h2>
+          <p>
+            直接打开就行。第一次用要填两把钥匙：DeepSeek 的 API Key 是必填的，腾讯云的语音识别是选填
+            （不填就走手机自带的识别）。两样都在文档里有一句一句的指引，密钥只存在你自己的浏览器里。
+          </p>
+        </div>
+        <div class="end-acts">
+          <a class="btn btn-primary" href="./app/">打开记哪儿<span class="btn-arrow" aria-hidden="true">→</span></a>
+          <a class="btn btn-ghost" href="https://github.com/zuohb/jinr#readme" rel="noopener">看部署说明<span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>记哪儿</span>
+    <span aria-hidden="true">·</span>
+    <a href="https://github.com/zuohb/jinr/blob/main/LICENSE" rel="noopener">MIT 协议</a>
+    <span aria-hidden="true">·</span>
+    <span>随便用，随便改</span>
+    <a class="sep" href="#top">回到顶部 ↑</a>
+  </div>
+</footer>
+
+<script>
+/* 顶栏滚过一段才显线，避免和 hero 的分割线打架 */
+(function () {
+  var top = document.getElementById('top');
+  var onScroll = function () {
+    top.classList.toggle('stuck', window.scrollY > 8);
+  };
+  addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+
+/* 锚点跳转别被吸顶栏挡住 */
+(function () {
+  if (!location.hash) return;
+  var el = document.querySelector(location.hash);
+  if (el) requestAnimationFrame(function () { el.scrollIntoView(); });
+})();
+</script>
+
+</body>
+</html>
