@@ -14,7 +14,8 @@
       var s = input[i];
       if (s > 1) s = 1;
       else if (s < -1) s = -1;
-      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      // 必须四舍五入：Int16Array 赋值是截断，直接写会整体偏小半个 LSB（累积量化噪声）
+      out[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7fff);
     }
     return out;
   }

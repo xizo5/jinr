@@ -64,11 +64,13 @@
     var fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (fence && fence[1].trim()) t = fence[1].trim();
     var start = t.indexOf('{');
+    if (start === -1) throw new Error('AI 返回里找不到 JSON');
+    // 有左括号但没右括号（模型话说到一半断了）：仍当"解析失败"报，别误报成"找不到 JSON"
     var end = t.lastIndexOf('}');
-    if (start === -1 || end === -1 || end <= start) throw new Error('AI 返回里找不到 JSON');
+    var slice = end > start ? t.slice(start, end + 1) : t.slice(start);
     var obj;
     try {
-      obj = JSON.parse(t.slice(start, end + 1));
+      obj = JSON.parse(slice);
     } catch (e) {
       throw new Error('AI 返回的 JSON 解析失败');
     }
