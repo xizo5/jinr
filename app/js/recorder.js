@@ -184,7 +184,7 @@
     });
   }
 
-  var Recorder = { supported: supported, start: start, stop: stop, getLevel: getLevel };
+  var Recorder = { supported: supported, start: start, stop: stop, getLevel: getLevel, pickMime: pickMime };
   if (typeof module !== 'undefined' && module.exports) module.exports = Recorder;
   else global.Recorder = Recorder;
 })(typeof window !== 'undefined' ? window : globalThis);

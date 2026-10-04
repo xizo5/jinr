@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>记哪儿 v22</title>
+<title>记哪儿 v23</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -252,11 +252,22 @@
     </div>
   </details>
   <p id="settingsMsg" class="msg"></p>
+
+  <!-- 麦克风自检：不等按住说话才发现用不了，先把环境和权限摸清楚 -->
+  <div class="card" style="padding: 10px 14px 12px; margin-bottom: 10px;">
+    <p class="hint" style="margin:0 0 6px;"><b>麦克风自检</b>（按住说话没反应时点这里）</p>
+    <div style="display:flex; gap:8px;">
+      <button id="micTestBtn" class="btn-secondary" type="button" style="flex:1;">测试麦克风</button>
+      <button id="micDiagBtn" class="btn-secondary" type="button" style="flex:1;">诊断环境</button>
+    </div>
+    <p id="micTestOut" class="msg" style="margin:8px 0 0;" hidden></p>
+  </div>
+
   <div class="dlg-actions">
     <button id="saveSettingsBtn" class="btn-primary" type="button" style="width:100%">保存</button>
   </div>
   <p class="hint" style="text-align:center; margin-top:12px;">
-    版本 <span id="appVersion">22</span> ·
+    版本 <span id="appVersion">23</span> ·
     <button id="checkUpdateBtn" type="button" class="link-btn">检查更新</button>
   </p>
   <!-- 新版本就绪时出现；平时 hidden -->
