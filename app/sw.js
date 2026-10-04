@@ -7,7 +7,7 @@
  *  - 静态资源：先给缓存（秒开），同时后台悄悄更新，下次打开即最新。
  * 每次改完代码，记得把 CACHE 的版本号 +1。
  */
-var CACHE = 'jinr-v20';
+var CACHE = 'jinr-v21';
 
 var ASSETS = [
   './',
@@ -25,7 +25,10 @@ var ASSETS = [
   './js/backup.js',
   './js/app.js',
   './manifest.webmanifest',
-  './icons/icon-512.png'
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon.png'
 ];
 
 function put(req, res) {
