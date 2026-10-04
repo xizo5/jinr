@@ -7,7 +7,7 @@
  *  - 静态资源：先给缓存（秒开），同时后台悄悄更新，下次打开即最新。
  * 每次改完代码，记得把 CACHE 的版本号 +1。
  */
-var CACHE = 'jinr-v21';
+var CACHE = 'jinr-v22';
 
 var ASSETS = [
   './',
@@ -51,20 +51,17 @@ self.addEventListener('activate', function (e) {
       return Promise.all(keys.map(function (k) {
         return k === CACHE ? null : caches.delete(k);
       }));
-    }).then(function () { return self.clients.claim(); }).then(function () {
-      /*
-       * 一次性过渡动作：之前 v13 是 cache-first，装过的手机一直吃旧缓存，
-       * 光靠新版页面里的 controllerchange 监听救不回来（旧页面没那段代码）。
-       * 所以在接管时把已打开的窗口直接重新导航一次，强制它们换到新版本。
-       * 过渡完（确认所有设备都更新到 v14 之后）可以删掉这一段。
-       */
-      return self.clients.matchAll({ type: 'window' }).then(function (list) {
-        list.forEach(function (c) {
-          try { c.navigate(c.url); } catch (err) { /* 个别浏览器不支持，忽略 */ }
-        });
-      });
-    })
+    }).then(function () { return self.clients.claim(); })
   );
+});
+
+/* 页面上「检查更新」按钮点下来时，由页面发这条消息接管切换。
+ *
+ * 为什么不自动切：之前 activate 里直接 clients.navigate() 强制刷新，
+ * 会打断用户正在说的话（可能正在录音或正看着一条记忆）。改成
+ * 「装好了亮提示条，用户点一下才切」，把决定权交回去。 */
+self.addEventListener('message', function (e) {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', function (e) {

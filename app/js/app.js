@@ -18,6 +18,8 @@
     setDeepseekKey: $('setDeepseekKey'), setModel: $('setModel'), setBaseUrl: $('setBaseUrl'),
     setTencentAppId: $('setTencentAppId'), setTencentSecretId: $('setTencentSecretId'), setTencentSecretKey: $('setTencentSecretKey'),
     saveSettingsBtn: $('saveSettingsBtn'),
+    appVersion: $('appVersion'), checkUpdateBtn: $('checkUpdateBtn'),
+    updateBar: $('updateBar'),
     editDlg: $('editDlg'), editTitle: $('editTitle'), editMeta: $('editMeta'),
     editItemWrap: $('editItemWrap'), editItem: $('editItem'),
     editPlaceWrap: $('editPlaceWrap'), editPlace: $('editPlace'),
@@ -28,8 +30,13 @@
     navTalkBtn: $('navTalkBtn'), navMemBtn: $('navMemBtn'), navSetBtn: $('navSetBtn'), memCount: $('memCount'),
     digestList: $('digestList'), digestMeta: $('digestMeta'),
     summaryBtn: $('summaryBtn'), summaryText: $('summaryText'),
+    updateBar: $('updateBar'),
     toast: $('toast')
   };
+
+  /* 版本号：跟 sw.js 里的 CACHE 保持一致。改代码后要同时改这两处 + sw.js 的 CACHE，
+     改完手机上的旧缓存才会换掉。 */
+  var APP_VERSION = '22';
 
   var state = {
     records: [],
@@ -927,6 +934,8 @@
       openSettings();
     });
     els.saveSettingsBtn.addEventListener('click', saveSettings);
+    if (els.checkUpdateBtn) els.checkUpdateBtn.addEventListener('click', checkUpdate);
+    watchNewWorker();
     Array.prototype.forEach.call(document.querySelectorAll('.done-btn'), function (b) {
       b.addEventListener('click', function () {
         var dlg = b.closest('dialog');
@@ -977,12 +986,95 @@
     }).catch(function () { /* PWA 失败不影响使用 */ });
   }
 
+  /* 盯着新 SW 装到一半：装完就把提示条亮出来，用户点一下才刷新
+   *
+   * 为什么需要：页面装到桌面后没有刷新按钮，代码更新不生效时用户毫无办法。
+   * 之前只有 activate 时强制 navigate 那招（见 sw.js 注释），属于兜底；
+   * 这里给它一个用户能看见、能自主决定的动作。*/
+  var watching = false;
+  function watchNewWorker() {
+    if (watching || !('serviceWorker' in navigator)) return;
+    watching = true;
+    var guard = 0;
+    var poll = setInterval(function () {
+      if (++guard > 60) { clearInterval(poll); return; } // 最多等 30 秒
+      navigator.serviceWorker.getRegistration().then(function (reg) {
+        if (!reg) return;
+        if (reg.waiting) {
+          clearInterval(poll);
+          showUpdateReady(reg);
+          return;
+        }
+        var sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', function () {
+          // installed 且已有 controller = 这次是「更新」而非「首次安装」
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            clearInterval(poll);
+            showUpdateReady(reg);
+          }
+        });
+      }).catch(function () { clearInterval(poll); });
+    }, 2000);
+  }
+
+  /* 「检查更新」：主动查一次有没有新 SW，装好就提示用户刷新
+   *
+   * 存在的理由：PWA 装到桌面后，代码更新不会自己生效，页面上也没有刷新按钮。
+   * 之前只能靠 activate 时强制 navigate，用户没有主动手段，只能靠等。*/
+  function checkUpdate() {
+    if (!('serviceWorker' in navigator)) {
+      setStatus('这个浏览器不支持 Service Worker，无法自动更新');
+      return;
+    }
+    if (els.checkUpdateBtn) {
+      els.checkUpdateBtn.disabled = true;
+      els.checkUpdateBtn.textContent = '检查中…';
+    }
+    navigator.serviceWorker.getRegistration().then(function (reg) {
+      if (!reg) throw new Error('还没有注册 Service Worker');
+      return reg.update();
+    }).then(function (reg) {
+      if (reg && reg.waiting) {
+        // 已经有新版本在等着 —— 装好后由下面这句提示用户点一下
+        showUpdateReady(reg);
+        return;
+      }
+      return navigator.serviceWorker.getRegistration().then(function (r) {
+        setStatus(r && r.active ? '已经是最新版本' : '检查完成，没有新版本');
+      });
+    }).catch(function (e) {
+      setStatus('检查失败：' + (e.message || e));
+    }).then(function () {
+      if (els.checkUpdateBtn) {
+        els.checkUpdateBtn.disabled = false;
+        els.checkUpdateBtn.textContent = '检查更新';
+      }
+    });
+  }
+
+  /* 新版本已装好，等用户确认才刷新 —— 不自动刷，避免打断正在说的话 */
+  function showUpdateReady(reg) {
+    setStatus('有新版本，点「检查更新」旁的按钮刷新');
+    if (!els.updateBar) return;
+    els.updateBar.hidden = false;
+    var btn = els.updateBar.querySelector('button');
+    if (btn) {
+      btn.textContent = '新版本已就绪，点此刷新';
+      btn.onclick = function () {
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        location.reload();
+      };
+    }
+  }
+
   function boot() {
     bind();
     showPage(routePage(), false);
     refreshMic();
     renderList();
     registerSW();
+    if (els.appVersion) els.appVersion.textContent = APP_VERSION;
     Store.getAll().then(function (recs) {
       state.records = recs || [];
       renderList();

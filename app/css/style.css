@@ -1274,6 +1274,32 @@ button {
   line-height: 1.5;
 }
 
+/* 设置底部的版本行里的「检查更新」：长得像文字链接，但要点得到 */
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--blue, #007aff);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn:disabled {
+  color: var(--text-2);
+  text-decoration: none;
+  cursor: default;
+}
+
+/* 新版本就绪提示条：平时 hidden，靠 [hidden] 属性藏起来 */
+.update-bar {
+  margin-top: 10px;
+}
+
+.update-bar[hidden] {
+  display: none;
+}
+
 .field {
   display: block;
   margin: 12px 0;
