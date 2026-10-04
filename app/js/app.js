@@ -37,7 +37,7 @@
 
   /* 版本号：跟 sw.js 里的 CACHE 保持一致。改代码后要同时改这两处 + sw.js 的 CACHE，
      改完手机上的旧缓存才会换掉。 */
-  var APP_VERSION = '23';
+  var APP_VERSION = '24';
 
   var state = {
     records: [],
@@ -1140,6 +1140,67 @@
     }).catch(function () { /* PWA 失败不影响使用 */ });
   }
 
+  /* ── 软键盘适配 ─────────────────────────────
+   *
+   * 问题：安卓上软键盘弹出时，body 用的是 100dvh，但 dvh 不会变——
+   * 键盘是盖在 WebView 上面的，不是把布局挤小。所以底部输入栏正好
+   * 躲在键盘后面，点不到也看不见。
+   *
+   * 解法：visualViewport 才是「用户实际能看到的区域」。
+   * 键盘弹出时它的 height 变小，offsetTop 变成键盘盖住的高度。于是：
+   *   --app-h = visualViewport.height（把 body 缩到可见区）
+   *   --kb    = 键盘盖住的高度（键盘动画期间页面整体上移）
+   *
+   * iOS 上 keyboard 事件也能用，但两套一起上容易打架，这里统一用 visualViewport。
+   */
+  var vvRaf = 0;
+  function syncViewport() {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    if (vvRaf) return; // 键盘动画每帧都触发，合并成一次
+    vvRaf = requestAnimationFrame(function () {
+      vvRaf = 0;
+      var root = document.documentElement;
+      var h = Math.round(vv.height);
+      var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+
+      root.style.setProperty('--app-h', h + 'px');
+      root.style.setProperty('--kb', kb + 'px');
+      // <dialog> 打开时是 top-layer 元素，不随 body 的 transform 走，
+      // 所以要单独给一份偏移量（见 style.css 的 .dlg）
+      root.style.setProperty('--dlg-kb', kb + 'px');
+      // 键盘占位超过 120px 才算真弹出了（否则只是地址栏收起之类的抖动）
+      document.body.classList.toggle('kb-open', kb > 120);
+
+      // 键盘弹起时把当前聚焦的输入框滚进可见区
+      if (kb > 120 && document.activeElement &&
+        /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) {
+        try {
+          document.activeElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } catch (e) { /* 旧浏览器忽略 */ }
+      }
+    });
+  }
+
+  function initViewport() {
+    syncViewport();
+    var vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', syncViewport);
+      vv.addEventListener('scroll', syncViewport);
+    }
+    // 兜底：有些安卓浏览器键盘收起时不触发 visualViewport 的 resize，
+    // 但会触发 window 的 resize
+    window.addEventListener('resize', syncViewport);
+    window.addEventListener('orientationchange', function () {
+      setTimeout(syncViewport, 250); // 转屏后等布局稳一下再量
+    });
+    // 键盘收起后清掉偏移，否则内容会一直偏上
+    document.addEventListener('focusout', function () {
+      setTimeout(syncViewport, 60);
+    });
+  }
+
   /* 盯着新 SW 装到一半：装完就把提示条亮出来，用户点一下才刷新
    *
    * 为什么需要：页面装到桌面后没有刷新按钮，代码更新不生效时用户毫无办法。
@@ -1228,6 +1289,7 @@
     refreshMic();
     renderList();
     registerSW();
+    initViewport(); // 软键盘适配：必须在内容渲染前装好
     if (els.appVersion) els.appVersion.textContent = APP_VERSION;
     Store.getAll().then(function (recs) {
       state.records = recs || [];

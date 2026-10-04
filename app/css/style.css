@@ -84,10 +84,22 @@ body {
 }
 
 body {
-  height: 100dvh;
+  /* 高度不用 100dvh：软键盘弹出时安卓的 dvh 不会变（键盘盖在 WebView 上），
+     改成由 JS 按 visualViewport 的真实高度写进 --app-h。见 app.js 的 syncViewport()。
+     留100vh 兜底，--app-h 未就绪时也不会塌。*/
+  height: var(--app-h, 100dvh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* 键盘弹出时把 body 往上推 --kb（键盘实际盖住的高度），
+     不动body 的话底部输入栏会正好躲在键盘后面。*/
+  transform: translateY(calc(-1 * var(--kb, 0px)));
+  transition: transform 0.18s ease-out;
+}
+
+/* 键盘弹出时给页面根加这个类，禁掉一些不必要的动效（键盘动画期间重排会抖） */
+body.kb-open {
+  transition: none;
 }
 
 button,
@@ -1201,6 +1213,18 @@ button {
   background: var(--bg);
   color: var(--text);
   padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  /* 键盘弹出时跟着一起上移，否则设置里的输入框会被键盘盖住。
+     body 已经整体上移了，这里只补对话框自己该有的偏移。*/
+  transform: translateY(calc(-1 * var(--dlg-kb, 0px)));
+  transition: transform 0.18s ease-out;
+}
+
+/* 设置里字段多，键盘弹起时给内部留滚动空间，别让最后一个输入框贴着键盘 */
+body.kb-open .dlg .card,
+body.kb-open .dlg .asr-cfg {
+  max-height: 52vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dlg[open] {
