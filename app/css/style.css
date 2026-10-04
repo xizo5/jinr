@@ -84,22 +84,19 @@ body {
 }
 
 body {
-  /* 高度不用 100dvh：软键盘弹出时安卓的 dvh 不会变（键盘盖在 WebView 上），
-     改成由 JS 按 visualViewport 的真实高度写进 --app-h。见 app.js 的 syncViewport()。
-     留100vh 兜底，--app-h 未就绪时也不会塌。*/
+  /* 键盘适配分两层：
+   * ① 主方案靠 viewport meta 的 interactive-widget=resizes-content
+   *    （见 app/index.html）——键盘弹出时直接压小布局视口，dvh 自然就对。
+   * ② 兜底靠 JS 按 visualViewport.height 写 --app-h（不支持上面那条的浏览器）。
+   *
+   * ⚠ 绝不能在 body 上加 transform 来上移页面：
+   *   transform 会让 body 变成 fixed 后代的包含块，.scrim / .drawer / .dlg
+   *   这些 position:fixed 的子元素会改成相对 body 定位，位置全乱、还会被
+   *   下面的 overflow:hidden 裁掉。上一版就是这么错的。*/
   height: var(--app-h, 100dvh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* 键盘弹出时把 body 往上推 --kb（键盘实际盖住的高度），
-     不动body 的话底部输入栏会正好躲在键盘后面。*/
-  transform: translateY(calc(-1 * var(--kb, 0px)));
-  transition: transform 0.18s ease-out;
-}
-
-/* 键盘弹出时给页面根加这个类，禁掉一些不必要的动效（键盘动画期间重排会抖） */
-body.kb-open {
-  transition: none;
 }
 
 button,
@@ -1204,7 +1201,6 @@ button {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
   margin: 0;
   width: auto;
   max-width: none;
@@ -1213,16 +1209,27 @@ button {
   background: var(--bg);
   color: var(--text);
   padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
-  /* 键盘弹出时跟着一起上移，否则设置里的输入框会被键盘盖住。
-     body 已经整体上移了，这里只补对话框自己该有的偏移。*/
-  transform: translateY(calc(-1 * var(--dlg-kb, 0px)));
-  transition: transform 0.18s ease-out;
+  /* 键盘弹起时上移，否则设置里的输入框会被键盘盖住。
+     用 bottom 而不是 transform —— 入场动画 sheet-up 动的是 transform，
+     两者同时写会互相覆盖。*/
+  bottom: var(--dlg-kb, 0px);
+  transition: bottom 0.18s ease-out;
+}
+
+/* 键盘弹起后可见区变小，弹层可能比剩余空间还高。
+   让它整体可滚，别把内容顶到屏幕外（此时用户正在打字，
+   标题滚出可视区可以接受）。用 --app-h 而不是 vh：
+   vh 在部分安卓浏览器里不随键盘变化。*/
+body.kb-open .dlg {
+  max-height: var(--app-h, 100dvh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 设置里字段多，键盘弹起时给内部留滚动空间，别让最后一个输入框贴着键盘 */
 body.kb-open .dlg .card,
 body.kb-open .dlg .asr-cfg {
-  max-height: 52vh;
+  max-height: calc(var(--app-h, 100dvh) * 0.5);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }

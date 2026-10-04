@@ -37,7 +37,7 @@
 
   /* 版本号：跟 sw.js 里的 CACHE 保持一致。改代码后要同时改这两处 + sw.js 的 CACHE，
      改完手机上的旧缓存才会换掉。 */
-  var APP_VERSION = '24';
+  var APP_VERSION = '25';
 
   var state = {
     records: [],
@@ -1142,16 +1142,24 @@
 
   /* ── 软键盘适配 ─────────────────────────────
    *
-   * 问题：安卓上软键盘弹出时，body 用的是 100dvh，但 dvh 不会变——
-   * 键盘是盖在 WebView 上面的，不是把布局挤小。所以底部输入栏正好
-   * 躲在键盘后面，点不到也看不见。
+   * 目标：键盘弹起时，底部输入栏要露在键盘上方、不被盖住。
    *
-   * 解法：visualViewport 才是「用户实际能看到的区域」。
-   * 键盘弹出时它的 height 变小，offsetTop 变成键盘盖住的高度。于是：
-   *   --app-h = visualViewport.height（把 body 缩到可见区）
-   *   --kb    = 键盘盖住的高度（键盘动画期间页面整体上移）
+   * 主方案（见 app/index.html 的 viewport meta）：
+   *   interactive-widget=resizes-content
+   *   键盘弹出时浏览器直接把「布局视口」压小，body 的 100dvh 自然就对了，
+   *   连 JS 都不需要。安卓 Chrome 108+ 支持。
    *
-   * iOS 上 keyboard 事件也能用，但两套一起上容易打架，这里统一用 visualViewport。
+   * 兜底（本函数）：老浏览器不认上面那条时，布局视口不变，
+   *   但 visualViewport.height 会变。把真实可见高度写进 --app-h，
+   *   body 高度跟着缩，输入栏就不会落在键盘后面。
+   *
+   * ⚠️ 这里只能改「高度」，绝对不能给 body 加 transform 上移：
+   *   transform 会让 body 变成 fixed 后代的包含块，.scrim / .drawer / .dlg
+   *   会全部改成相对 body 定位而错位、并被 overflow:hidden 裁掉。
+   *   （上一版就是这么错的：既缩了高度又上移，等于补偿两遍。）
+   *
+   * --dlg-kb 只给 <dialog> 用：它打开时在 top-layer，不随布局流走，
+   * 需要单独的偏移量（见 style.css 的 .dlg）。
    */
   var vvRaf = 0;
   function syncViewport() {
@@ -1162,12 +1170,10 @@
       vvRaf = 0;
       var root = document.documentElement;
       var h = Math.round(vv.height);
+      // 键盘实际盖住的高度：超出可见区的那部分（减去视口自身偏移）
       var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
 
       root.style.setProperty('--app-h', h + 'px');
-      root.style.setProperty('--kb', kb + 'px');
-      // <dialog> 打开时是 top-layer 元素，不随 body 的 transform 走，
-      // 所以要单独给一份偏移量（见 style.css 的 .dlg）
       root.style.setProperty('--dlg-kb', kb + 'px');
       // 键盘占位超过 120px 才算真弹出了（否则只是地址栏收起之类的抖动）
       document.body.classList.toggle('kb-open', kb > 120);
