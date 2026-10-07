@@ -7,7 +7,7 @@
  *  - 静态资源：先给缓存（秒开），同时后台悄悄更新，下次打开即最新。
  * 每次改完代码，记得把 CACHE 的版本号 +1。
  */
-var CACHE = 'jinr-v25';
+var CACHE = 'jinr-v26';
 
 var ASSETS = [
   './',

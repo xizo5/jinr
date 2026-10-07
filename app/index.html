@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<title>记哪儿 v25</title>
+<title>记哪儿 v26</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -235,7 +235,11 @@
     </label>
   </div>
   <details class="asr-cfg">
-    <summary>腾讯云语音识别（不填则用手机自带识别 / 打字）</summary>
+    <summary>腾讯云语音识别（手机上想用「按住说话」就必须填）</summary>
+    <p class="hint" style="margin:8px 0 4px;">
+      不填也能用语音：点下面输入框，用<b>键盘自带的 🎤 麦克风</b>说话，文字会填进来。
+      想要「按住说话、说完自动记」，就需要填下面三项（腾讯云有免费额度）。
+    </p>
     <div class="card" style="padding: 4px 14px 8px; margin: 8px 0 4px;">
       <label class="field">
         <span class="label">AppID</span>
@@ -267,7 +271,7 @@
     <button id="saveSettingsBtn" class="btn-primary" type="button" style="width:100%">保存</button>
   </div>
   <p class="hint" style="text-align:center; margin-top:12px;">
-    版本 <span id="appVersion">25</span> ·
+    版本 <span id="appVersion">26</span> ·
     <button id="checkUpdateBtn" type="button" class="link-btn">检查更新</button>
   </p>
   <!-- 新版本就绪时出现；平时 hidden -->
@@ -327,6 +331,34 @@
   <div class="dlg-actions spread">
     <button id="micReloadBtn" class="btn-secondary" type="button">重开页面</button>
     <button id="micRetryBtn" class="btn-primary" type="button">知道了</button>
+  </div>
+</dialog>
+
+<!-- 语音没配好时（不是权限问题，是压根没有可用的识别方案） -->
+<dialog id="asrHelpDlg" class="dlg">
+  <div class="grabber"></div>
+  <div class="dlg-head">
+    <h2>语音输入还没开通</h2>
+    <button value="cancel" type="button" class="done-btn">关闭</button>
+  </div>
+  <p class="hint">手机浏览器自带的那套语音识别在<strong>国内连不上谷歌</strong>，所以用不了。
+    有两条路，第一条现在就能用：</p>
+
+  <div class="card" style="padding: 10px 14px 12px; margin-bottom: 10px;">
+    <p class="hint" style="margin:0 0 4px;"><b>① 用键盘自带的语音输入（零配置，推荐先试这个）</b></p>
+    <p class="hint" style="margin:0;">点下面输入框 → 弹出键盘 → 点键盘上的 <b>🎤 麦克风</b> 按钮 → 说话，
+      文字会自动填进去。微信键盘、Gboard、搜狗、讯飞、百度输入法都有这个按钮。</p>
+  </div>
+
+  <div class="card" style="padding: 10px 14px 12px;">
+    <p class="hint" style="margin:0 0 4px;"><b>② 填腾讯云密钥（体验最好：按住说话、说完自动记）</b></p>
+    <p class="hint" style="margin:0;">去 <b>console.cloud.tencent.com/asr</b> 开通「实时语音识别」（有免费额度），
+      再到 <b>console.cloud.tencent.com/cam/capi</b> 建一对 API 密钥，把 AppID / SecretId / SecretKey 三项填进设置。</p>
+  </div>
+
+  <div class="dlg-actions spread">
+    <button id="asrLaterBtn" class="btn-secondary" type="button">先打字</button>
+    <button id="asrGoSettingsBtn" class="btn-primary" type="button">去设置填密钥</button>
   </div>
 </dialog>
 

@@ -1170,6 +1170,15 @@ button {
 .hold-btn.holding { background: var(--red); color: #fff; transform: scale(1.02); }
 .hold-btn:disabled { opacity: 0.45; }
 
+/* 语音没开通时的按钮态：做成「可点的入口」而不是灰掉的死按钮。
+   蓝色描边 + 蓝字＝提示这里有事情要做，点一下会给出指引。*/
+.hold-btn.need-setup {
+  background: transparent;
+  color: var(--blue);
+  box-shadow: inset 0 0 0 1.5px var(--blue);
+  font-weight: 600;
+}
+
 .send-btn {
   width: 36px;
   height: 36px;

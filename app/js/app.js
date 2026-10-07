@@ -9,6 +9,7 @@
     micBtn: $('micBtn'), inputBar: $('inputBar'), modeBtn: $('modeBtn'),
     micHelpDlg: $('micHelpDlg'), micRetryBtn: $('micRetryBtn'), micDiag: $('micDiag'),
     micReloadBtn: $('micReloadBtn'),
+    asrHelpDlg: $('asrHelpDlg'), asrLaterBtn: $('asrLaterBtn'), asrGoSettingsBtn: $('asrGoSettingsBtn'),
     statusLine: $('statusLine'), textInput: $('textInput'), sendTextBtn: $('sendTextBtn'),
     resultArea: $('resultArea'),
     recordList: $('recordList'), ignoredList: $('ignoredList'),
@@ -37,7 +38,7 @@
 
   /* 版本号：跟 sw.js 里的 CACHE 保持一致。改代码后要同时改这两处 + sw.js 的 CACHE，
      改完手机上的旧缓存才会换掉。 */
-  var APP_VERSION = '25';
+  var APP_VERSION = '26';
 
   var state = {
     records: [],
@@ -84,8 +85,16 @@
     toastTimer = setTimeout(function () { els.toast.hidden = true; }, 2800);
   }
 
+  /* 状态行的默认文案：语音没开通时不要再写「随口说一句」——
+     那是在承诺一个用不了的功能，会让人一直以为是自己不会用。*/
+  function defaultStatus() {
+    return ASR.mode(state.settings)
+      ? '随口说一句，我来记'
+      : '语音还没开通 · 点「开启语音」看怎么弄';
+  }
+
   function setStatus(text, busy) {
-    els.statusLine.textContent = text || '随口说一句，我来记';
+    els.statusLine.textContent = text || defaultStatus();
     els.statusLine.className = 'status' + (busy ? ' busy' : '');
   }
 
@@ -493,11 +502,27 @@
 
   function refreshMic() {
     var mode = ASR.mode(state.settings);
-    els.micBtn.disabled = state.busy || !mode;
+    var needSetup = !mode;
+    /* ⚠ 没有可用语音方案时，绝不能「静默禁用」按钮。
+     * 禁用 = 点了完全没反应、也没有任何提示，用户根本不知道要去配密钥。
+     * 手机端「没办法语音输入」的报障，根子就在这里。
+     * 改成：按钮照旧可点，点了弹 openAsrHelp()，给两条可执行的路。*/
+    els.micBtn.disabled = state.busy;
     els.micBtn.classList.toggle('holding', state.recording && !state.busy);
+    els.micBtn.classList.toggle('need-setup', needSetup);
     if (state.busy) els.micBtn.textContent = '我想想…';
     else if (state.recording) els.micBtn.textContent = '松开 结束';
+    else if (needSetup) els.micBtn.textContent = '开启语音';
     else els.micBtn.textContent = '按住 说话';
+  }
+
+  /* 语音没开通时的指引弹层。
+   * 两条路都写上，第一条（用键盘自带的语音输入）不需要任何密钥、当场能用，
+   * 所以放前面 —— 用户不该为了试一下功能先去开云账号。*/
+  function openAsrHelp() {
+    if (!els.asrHelpDlg) return;
+    if (els.asrHelpDlg.open) return; // 已经在弹了，别重复 showModal
+    els.asrHelpDlg.showModal();
   }
 
   /* 最长说 60 秒；若语音服务没响应，8 秒后强制收尾 */
@@ -760,7 +785,7 @@
     if (state.busy) return;
     try { els.micBtn.setPointerCapture(e.pointerId); } catch (err) { /* 老浏览器忽略 */ }
     var mode = ASR.mode(state.settings);
-    if (!mode) { toast('语音识别还没配置好，先打字，或去设置里填密钥', true); return; }
+    if (!mode) { openAsrHelp(); return; } // 给出开通指引，而不是干巴巴一句 toast
     holdStartGo(mode); // 同步发起，手势不过期
   }
 
@@ -889,16 +914,18 @@
   }
 
   /* 语音 / 键盘模式切换 */
-  function toggleMode() {
-    var toVoice = !els.inputBar.classList.contains('voice');
-    if (toVoice && !ASR.mode(state.settings)) {
-      toast('语音识别还没配置好（设置里可填腾讯云密钥）', true);
-      return;
-    }
+  function setVoiceMode(toVoice) {
     els.inputBar.classList.toggle('voice', toVoice);
     els.micBtn.hidden = !toVoice;
     els.modeBtn.setAttribute('aria-label', toVoice ? '切换到键盘' : '切换到语音');
     refreshMic();
+  }
+
+  function toggleMode() {
+    var toVoice = !els.inputBar.classList.contains('voice');
+    // 语音没配好时不要只弹一句 toast 就拦住，直接给出开通指引
+    if (toVoice && !ASR.mode(state.settings)) { openAsrHelp(); return; }
+    setVoiceMode(toVoice);
   }
 
   function cleanupMic() {
@@ -1114,6 +1141,23 @@
     });
     if (els.micReloadBtn) {
       els.micReloadBtn.addEventListener('click', function () { location.reload(); });
+    }
+    // 「开启语音」引导弹层的两个出口：要么现在就去填密钥，要么先用键盘打字
+    if (els.asrLaterBtn) {
+      els.asrLaterBtn.addEventListener('click', function () {
+        closeSheet(els.asrHelpDlg);
+        setVoiceMode(false); // 切到键盘模式，输入框直接可用
+        // 等弹层收完再聚焦，否则软键盘会和弹层收起动画打架
+        setTimeout(function () {
+          try { els.textInput.focus(); } catch (e) { /* 忽略 */ }
+        }, 220);
+      });
+    }
+    if (els.asrGoSettingsBtn) {
+      els.asrGoSettingsBtn.addEventListener('click', function () {
+        closeSheet(els.asrHelpDlg);
+        openSettings(); // 设置里有腾讯云三件套的输入框
+      });
     }
     document.addEventListener('visibilitychange', function () {
       if (document.hidden && state.recording) holdEnd(); // 切后台自动收尾
