@@ -1488,6 +1488,14 @@ body.kb-open .dlg .asr-cfg {
   margin: 8px 0 0;
 }
 
+/* 排查弹层里的诊断文字要保留换行：结论和环境底细分两段，
+   挤成一行不好读（app.js 的 openMicHelp 用 \n\n 分段）。*/
+#micDiag {
+  white-space: pre-line;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
 /* ── 状态行 ───────────────────────────── */
 .status {
   color: var(--text-2);

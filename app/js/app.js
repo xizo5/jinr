@@ -38,7 +38,7 @@
 
   /* 版本号：跟 sw.js 里的 CACHE 保持一致。改代码后要同时改这两处 + sw.js 的 CACHE，
      改完手机上的旧缓存才会换掉。 */
-  var APP_VERSION = '26';
+  var APP_VERSION = '27';
 
   var state = {
     records: [],
@@ -607,10 +607,49 @@
     } catch (e) { cb(null); }
   }
 
+  /* Web Speech API（浏览器自带识别）的错误码。
+   *
+   * ⚠ 它跟 getUserMedia 完全不是一套命名，这是踩过的坑：
+   *   getUserMedia → NotAllowedError / NotFoundError / NotReadableError（驼峰）
+   *   Web Speech   → not-allowed / audio-capture / service-not-allowed（小写连字符）
+   * 只认驼峰那套的话，自带识别的失败会掉进最后的兜底分支，只显示
+   * 「麦克风打不开（not-allowed）」这种等于没说的提示——用户看到的就是这个。
+   * 返回 null 表示这不是自带识别的错误码，交给后面的分支处理。*/
+  function webSpeechDiag(err) {
+    var code = err && err.name;
+    var map = {
+      'not-allowed': '麦克风权限被拒绝了（自带识别这条路）。' +
+        '点地址栏左侧 🔒 / ⓘ → 麦克风 → 允许 → 刷新页面。' +
+        (isIOS() ? '' : '安卓还要去「设置 → 应用 → 浏览器 → 权限 → 麦克风」放行。'),
+      'service-not-allowed': '这个浏览器不给网页用自带语音识别（服务被禁）。' +
+        '换 Chrome 或 Edge 试试，或者直接填腾讯云密钥走另一条路。',
+      'audio-capture': '麦克风打不开（系统层面被拒或没设备）。' +
+        '检查系统的「权限管理 → 麦克风」是否放行了这个浏览器，' +
+        '以及有没有别的 App 正占着麦克风。',
+      'network': '自带识别必须连谷歌的服务，国内基本连不上——这是这条路的硬伤。' +
+        '填腾讯云密钥可以绕开。',
+      'no-speech': '没听到你说话。按住之后再说，别松太早。',
+      'aborted': '识别被中途打断了，再试一次。'
+    };
+    return map[code] || null;
+  }
+
   /* 返回一条能直接读的"为什么开不了"——按可能性从高到低排。
    * 返回 Promise：权限状态是异步查的，只有拿到它才能区分
    * 「用户拒绝了」和「浏览器压根不弹授权框」——这两者错误名字一模一样。*/
   function micDiagText(err) {
+    // ① 内置浏览器：它根本不给网页麦克风，后面所有检查都没意义
+    var app = inAppBrowser();
+    if (app) {
+      return Promise.resolve('你现在是用「' + app + '」内置浏览器打开的，它不给网页麦克风。' +
+        '点右上角 ⋯ →「在浏览器打开」（安卓用 Chrome），再按住说话。');
+    }
+
+    // ② 自带识别的错误码（小写连字符那套）—— 必须先于通用兜底判断
+    var ws = webSpeechDiag(err);
+    if (ws) return Promise.resolve(ws);
+
+    // ③ 环境预检：https / 录音接口是否具备
     var pre = precheckMic();
     if (pre) return Promise.resolve(pre);
 
@@ -647,16 +686,6 @@
     return Promise.resolve('');
   }
 
-  /* 出一行技术底细，方便对着屏幕排查 */
-  function envLine() {
-    return [
-      location.protocol + '//' + location.host,
-      'getUserMedia:' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? '有' : '无'),
-      'MediaRecorder:' + (window.MediaRecorder ? '有' : '无'),
-      '语音识别:' + ((window.SpeechRecognition || window.webkitSpeechRecognition) ? '自带' : '无')
-    ].join(' · ');
-  }
-
   function openMicHelp(err) {
     if (els.micHelpDlg.open) return; // 已经在弹了，别重复 showModal
     els.micHelpDlg.showModal();
@@ -664,26 +693,33 @@
     els.micDiag.hidden = false;
     els.micDiag.textContent = '正在判断原因…';
 
-    /* 权限状态是异步的，所以诊断文案也异步出：先渲染环境底细，
-       拿到权限状态后再覆盖成针对性的结论。 */
-    envLineAsync().then(function (line) {
+    /* 结论和环境底细一起给：
+     * 只给结论的话，万一结论不对（比如错误码没见过），用户就没法提供线索了。
+     * 底细里有具体的错误码和权限状态，对着念出来就能定位。*/
+    Promise.all([
+      Promise.resolve(micDiagText(err)),
+      envLineAsync(err)
+    ]).then(function (r) {
       if (!els.micDiag) return;
-      if (!els.micDiag.textContent.match(/判断中|判断原因/)) return; // 已被别处改写
-      els.micDiag.textContent = line;
-    });
-    Promise.resolve(micDiagText(err)).then(function (d) {
-      if (!els.micDiag) return;
-      els.micDiag.textContent = d || envLine();
+      var conclusion = r[0] || '没能判断出具体原因。';
+      els.micDiag.textContent = conclusion + '\n\n【环境底细】' + r[1];
     });
   }
 
-  /* 带权限状态的完整底细，用来核实真实环境 */
-  function envLineAsync() {
+  /* 带权限状态 + 原始错误码的完整底细，用来核实真实环境。
+   * 原始错误码很关键：不认识的情况就只能靠它定位。*/
+  function envLineAsync(err) {
     return new Promise(function (resolve) {
+      var mode = ASR.mode(state.settings);
       var base = [
-        location.protocol + '//' + location.host,
+        '语音方案:' + (mode === 'tencent' ? '腾讯云'
+          : mode === 'webspeech' ? '浏览器自带识别'
+            : '无（只能打字）'),
+        '错误码:' + ((err && err.name) || '无'),
+        '站点:' + location.protocol + '//' + location.host,
         'getUserMedia:' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? '有' : '无'),
-        'MediaRecorder:' + (window.MediaRecorder ? '有' : '无')
+        'MediaRecorder:' + (window.MediaRecorder ? '有' : '无'),
+        '自带识别:' + (ASR.webSpeechSupported() ? '有' : '无')
       ];
       micPermissionState(function (state) {
         base.push('麦克风权限:' + (state === 'granted' ? '已允许'
@@ -759,15 +795,9 @@
     var out = els.micTestOut;
     out.hidden = false;
     out.textContent = '检查中…';
-    envLineAsync().then(function (line) {
+    // envLineAsync 里已经含「语音方案」「自带识别」等字段，这里不再重复拼
+    envLineAsync(null).then(function (line) {
       out.textContent = line;
-      var mode = ASR.mode(state.settings);
-      var speech = (window.SpeechRecognition || window.webkitSpeechRecognition)
-        ? '有（但国内常连不上谷歌服务）' : '无';
-      out.textContent += ' · 语音识别:' + speech + ' · 当前方案:' +
-        (mode === 'tencent' ? '腾讯云（密钥已填）'
-          : mode === 'webspeech' ? '浏览器自带（国内安卓常不可用）'
-            : '无（只能打字）');
     });
   }
 
