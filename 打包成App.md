@@ -71,34 +71,46 @@ jinr/
 
 ## 怎么出 APK
 
-本机没有 JDK / Android SDK / Android Studio（装齐要几个 GB），
-所以走 **GitHub Actions 云构建**：仓库是公开的，Actions 额度免费无限，
-而且 runner 自带 Android SDK。
+**本机已经能直接出包了**（工具链装在 `D:/dev/toolchains`，没走云构建）：
 
-### 一次性设置（关键：卡在这里）
+```bash
+bash ci/build-apk-local.sh
+```
 
-把 `ci/android.yml` 的内容放到 `.github/workflows/android.yml`：
+产物会复制到 `D:/dev/jinr-apk/记哪儿-vNN.apk`，拷到手机装上即可。
 
-1. 打开 https://github.com/xizo5/jinr
-2. **Add file → Create new file**
-3. 文件名填 `.github/workflows/android.yml`
-4. 把 `ci/android.yml` 的内容粘进去（**去掉开头那 9 行说明注释**）
-5. 提交
+### 工具链位置（只需装一次，已装好）
 
-> 为什么不能我直接推？当前用的 Personal Access Token 没有 `workflow` 权限，
+| 组件 | 路径 | 说明 |
+|---|---|---|
+| JDK 21 | `D:/dev/toolchains/jdk-21.0.12.1+1` | **必须是 21**。Capacitor 7 的安卓库要 Java 21，用 JDK 17 会报「无效的源发行版：21」 |
+| Android SDK | `D:/dev/toolchains/android-sdk` | platform-35 + build-tools 35.0.0 |
+| Gradle 8.11.1 | `D:/dev/toolchains/gradle-8.11.1` | 本体直接用，绕开 wrapper |
+
+脚本里固化了四个踩过的坑，改脚本前先看注释，否则很容易重现：
+
+1. **Gradle 原生服务在本机加载失败** —— 必须用 `JAVA_TOOL_OPTIONS` 传
+   `-Dorg.gradle.native=false`。加在命令行上没用（只作用于客户端 JVM，守护进程照样崩）。
+2. **`GRADLE_USER_HOME` 不能用 D 盘那个目录** —— 连 `registry.bin.lock` 都创建不了，
+   回退到默认的 `~/.gradle` 即可。
+3. **`cap sync` 会被安全删除机制挡住**，导致网页资源不同步（装出来的还是旧版），
+   改成手动把 `app/` 拷到 `android/app/src/main/assets/public/`。
+4. **改了 `app/` 里的文件必须升版本号**（`index.html` / `app.js` / `sw.js` / `appVersion`
+   四处），否则手机的 Service Worker 会一直用旧缓存。
+
+### 备选：云构建
+
+`ci/android.yml` 是等价的 GitHub Actions 流水线。要用的话需要在网页端
+**Add file → Create new file**，路径填 `.github/workflows/android.yml`，
+把 `ci/android.yml` 的内容粘进去（去掉开头几行说明注释）。
+
+> 之所以不能直接推：当前用的 Personal Access Token 没有 `workflow` 权限，
 > GitHub 会拒绝任何创建/修改 `.github/workflows/` 的推送。
-> 想省掉这步的话，给 token 加上 `workflow` 权限即可（但那个 token 本来就该吊销了）。
-
-### 之后每次构建
-
-- 推送到 `main` 就会自动构建（只改了 `app/`、`android/` 等路径时触发）
-- 或在仓库 **Actions** 页手动点 **Run workflow**
-- 构建完在对应 run 页面底部下载 **jinr-debug-apk** 这个 artifact
 
 ### 装到手机
 
-1. 手机上下载那个 `.apk`
-2. 安装时系统会提示"未知来源"→ 允许（debug 包没上架，这是正常的）
+1. 把 `D:/dev/jinr-apk/记哪儿-vNN.apk` 传到手机（微信文件传输助手 / 数据线都行）
+2. 安装时系统会提示「未知来源」→ 允许（debug 包没上架，这是正常的）
 3. 装好后打开「记哪儿」→ 会问麦克风权限 → 允许
 
 ---
