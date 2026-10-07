@@ -1,0 +1,84 @@
+# ⚠️ 这不是生效中的流水线文件，只是一个副本。
+#
+# 真正生效的位置是 .github/workflows/android.yml（github 只认那个路径）。
+# 之所以放这里，是因为推送用的 token 没有 workflow 权限，
+# 无法直接创建 .github/workflows/ 下的文件（会被 GitHub 拒绝）。
+#
+# 启用方法：在 GitHub 网页端 Add file → Create new file，
+# 路径填 .github/workflows/android.yml，把本文件内容（去掉上面这几行注释）粘进去，提交即可。
+# 之后每次推送到 main，Actions 会自动构建 APK。
+
+name: 构建安卓 APK
+
+# 为什么用云构建而不是本机：
+# 本机没有 JDK / Android SDK / Android Studio，装齐要好几个 GB。
+# GitHub 的 ubuntu runner 自带 Android SDK，仓库是公开的所以 Actions 免费。
+# 产物是 debug APK，可直接装到手机上（无需签名证书）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 取出代码
+        uses: actions/checkout@v4
+
+      - name: 装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: 装依赖
+        run: npm install --no-audit --no-fund
+
+      # android/ 目录已入库（里面有定制过的 AndroidManifest.xml），
+      # 所以正常情况下只需 sync；万一被删了才重新生成。
+      - name: 生成或同步安卓工程
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      - name: 编译 debug APK
+        run: |
+          cd android
+          # 保险：万一 gradlew 被存成了 CRLF，Linux 上会报 "bad interpreter"，
+          # 而且报错完全看不出是行尾符问题。见 .gitattributes。
+          sed -i 's/\r$//' gradlew
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: 校验 APK 产出
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          if [ ! -f "$APK" ]; then
+            echo "::error::没找到 $APK，编译可能失败了"
+            find android -name "*.apk" || true
+            exit 1
+          fi
+          ls -lh "$APK"
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jinr-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
