@@ -26,7 +26,7 @@
       return Promise.reject(new Error('还没填 DeepSeek 的 API Key，去设置里填'));
     }
     var body = {
-      model: (settings.model || 'deepseek-chat').trim(),
+      model: (settings.model || 'deepseek-flash').trim(),
       messages: messages,
       temperature: 0.2,
       stream: false

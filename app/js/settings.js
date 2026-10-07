@@ -8,7 +8,7 @@
 
   var DEFAULTS = {
     deepseekKey: '',
-    model: 'deepseek-chat',
+    model: 'deepseek-flash',
     baseUrl: '',              // 中转地址，留空直连 https://api.deepseek.com
     tencentAppId: '',
     tencentSecretId: '',

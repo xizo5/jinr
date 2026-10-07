@@ -1094,7 +1094,7 @@
   function openSettings() {
     var s = state.settings;
     els.setDeepseekKey.value = s.deepseekKey || '';
-    els.setModel.value = s.model || 'deepseek-chat';
+    els.setModel.value = s.model || 'deepseek-flash';
     els.setBaseUrl.value = s.baseUrl || '';
     els.setTencentAppId.value = s.tencentAppId || '';
     els.setTencentSecretId.value = s.tencentSecretId || '';
@@ -1106,7 +1106,7 @@
   function saveSettings() {
     state.settings = Settings.save({
       deepseekKey: els.setDeepseekKey.value.trim(),
-      model: els.setModel.value.trim() || 'deepseek-chat',
+      model: els.setModel.value.trim() || 'deepseek-flash',
       baseUrl: els.setBaseUrl.value.trim(),
       tencentAppId: els.setTencentAppId.value.trim(),
       tencentSecretId: els.setTencentSecretId.value.trim(),
