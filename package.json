@@ -1,0 +1,20 @@
+{
+  "name": "jinr",
+  "version": "1.0.0",
+  "private": true,
+  "description": "记哪儿 —— 语音记事 PWA 的安卓壳（Capacitor）",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "android:init": "cap add android",
+    "android:sync": "cap sync android",
+    "android:build": "cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "7.6.9",
+    "@capacitor/core": "7.6.9",
+    "@capacitor-community/speech-recognition": "7.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "7.6.9"
+  }
+}

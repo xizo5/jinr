@@ -38,7 +38,7 @@
 
   /* 版本号：跟 sw.js 里的 CACHE 保持一致。改代码后要同时改这两处 + sw.js 的 CACHE，
      改完手机上的旧缓存才会换掉。 */
-  var APP_VERSION = '27';
+  var APP_VERSION = '28';
 
   var state = {
     records: [],
@@ -634,6 +634,39 @@
     return map[code] || null;
   }
 
+  /* 安卓原生识别（SpeechRecognizer）的失败原因。
+   * 它的错误是插件把系统错误码翻译成的英文短句（见插件 Android 端
+   * getErrorText），所以按字符串匹配。
+   * 注意「No match / No speech input」这类属于"没说话"，在 asr.js 里已被
+   * 标成 silent，走温和提示、不会到这里；能到这里的都是真故障。*/
+  function nativeDiag(err) {
+    var msg = String((err && err.name) || '');
+    if (!msg) return null;
+    if (/insufficient permissions|missing permission/i.test(msg)) {
+      return '麦克风权限没给。去「设置 → 应用 → 记哪儿 → 权限」里允许麦克风。';
+    }
+    if (/not available/i.test(msg)) {
+      return '这台手机上没找到可用的语音识别服务。' +
+        '部分安卓机（尤其精简版系统）不预装识别引擎，' +
+        '可以装一个带语音输入的输入法，或改用腾讯云密钥那条路。';
+    }
+    if (/network/i.test(msg)) {
+      return '识别的网络请求失败了。有些手机的语音引擎走云端，' +
+        '断网或连不上它的服务器就会这样。检查网络，或改用腾讯云密钥。';
+    }
+    if (/audio recording error/i.test(msg)) {
+      return '录音出错。可能是麦克风被别的 App 占着（通话/录音/语音助手），' +
+        '关掉它们再试。';
+    }
+    if (/busy/i.test(msg)) {
+      return '识别服务正忙（上一次还没结束）。等一两秒再按住说话。';
+    }
+    if (/server/i.test(msg)) {
+      return '识别服务器返回了错误。等一下再试；如果一直这样，改用腾讯云密钥。';
+    }
+    return null;
+  }
+
   /* 返回一条能直接读的"为什么开不了"——按可能性从高到低排。
    * 返回 Promise：权限状态是异步查的，只有拿到它才能区分
    * 「用户拒绝了」和「浏览器压根不弹授权框」——这两者错误名字一模一样。*/
@@ -645,11 +678,15 @@
         '点右上角 ⋯ →「在浏览器打开」（安卓用 Chrome），再按住说话。');
     }
 
-    // ② 自带识别的错误码（小写连字符那套）—— 必须先于通用兜底判断
+    // ② 原生识别的失败原因（英文短句）
+    var nat = nativeDiag(err);
+    if (nat) return Promise.resolve(nat);
+
+    // ③ 自带识别的错误码（小写连字符那套）—— 必须先于通用兜底判断
     var ws = webSpeechDiag(err);
     if (ws) return Promise.resolve(ws);
 
-    // ③ 环境预检：https / 录音接口是否具备
+    // ④ 环境预检：https / 录音接口是否具备
     var pre = precheckMic();
     if (pre) return Promise.resolve(pre);
 
@@ -712,9 +749,10 @@
     return new Promise(function (resolve) {
       var mode = ASR.mode(state.settings);
       var base = [
-        '语音方案:' + (mode === 'tencent' ? '腾讯云'
-          : mode === 'webspeech' ? '浏览器自带识别'
-            : '无（只能打字）'),
+        '语音方案:' + (mode === 'native' ? '安卓原生识别'
+          : mode === 'tencent' ? '腾讯云'
+            : mode === 'webspeech' ? '浏览器自带识别'
+              : '无（只能打字）'),
         '错误码:' + ((err && err.name) || '无'),
         '站点:' + location.protocol + '//' + location.host,
         'getUserMedia:' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? '有' : '无'),
@@ -868,7 +906,9 @@
         openMicHelp(err.raw || err); // 一律给可执行的排查指引，不丢原始错误
       });
     } else {
-      var handle = ASR.webSpeechStart();
+      /* 原生识别 与 自带识别 的 handle 形态一样（都有 promise / stop），
+         所以共用一套收尾逻辑，只在启动处分流。*/
+      var handle = (mode === 'native') ? ASR.nativeStart() : ASR.webSpeechStart();
       state.wsHandle = handle;
       state.recording = true;
       state.holdStartAt = Date.now();
@@ -1198,6 +1238,10 @@
   function registerSW() {
     if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
     if (!('serviceWorker' in navigator)) return;
+    /* 原生壳（Capacitor）里不注册 SW：
+       外壳已经把全部资源打进安装包了，离线缓存没意义；而且 SW 会跟外壳的
+       资源加载打架 —— 改完代码 App 里看到的还是旧的，还没有刷新按钮可救。*/
+    if (ASR.nativeBridge()) return;
 
     // 已经从旧 SW 接管过页面：等新 SW 上岗时自动刷一次，
     // 否则手机上会一直在跑上一次部署的旧代码（这次改的就是这个坑）。
@@ -1370,6 +1414,15 @@
     renderList();
     registerSW();
     initViewport(); // 软键盘适配：必须在内容渲染前装好
+
+    /* 问一次原生侧「这台设备有没有可用的识别服务」。
+     * 是异步的（要跨桥调用），拿到结果后刷新界面 —— 因为「有没有语音方案」
+     * 决定了按钮是「按住 说话」还是「开启语音」、状态行写什么。*/
+    ASR.probeNative().then(function () {
+      refreshMic();
+      setStatus('');
+    });
+
     if (els.appVersion) els.appVersion.textContent = APP_VERSION;
     Store.getAll().then(function (recs) {
       state.records = recs || [];

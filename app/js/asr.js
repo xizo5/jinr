@@ -1,8 +1,11 @@
 /*
  * 记哪儿 —— 语音转文字
- * 路线 A：腾讯云「实时语音识别」WebSocket（填了三件套密钥时优先用，中文最准）
- * 路线 B：浏览器自带识别（没填密钥时的兜底，国内安卓 Chrome 可能不可用）
+ * 路线 A：安卓原生识别（Capacitor 壳里才有）—— 用手机自带引擎，国内可用，无需密钥
+ * 路线 B：腾讯云「实时语音识别」WebSocket（填了三件套密钥时用，中文最准）
+ * 路线 C：浏览器自带识别（国内安卓连不上谷歌，基本作废，仅作兜底）
  * 都不行：打字。
+ *
+ * 优先级 A > B > C：A 免费且最快，B 最准但要点配置，C 在国内基本不能用。
  */
 (function (global) {
   'use strict';
@@ -206,14 +209,127 @@
     return e;
   }
 
-  /* 当前能用哪条路：'tencent' | 'webspeech' | null（只能打字） */
+  /* ── 路线 C：安卓原生识别（Capacitor 壳里才有）───────────
+   *
+   * 为什么这条最重要：Web Speech API 把音频送到谷歌服务器识别，国内连不上；
+   * 而安卓系统的 SpeechRecognizer 用的是**手机厂商自带的引擎**，国内可用。
+   * 所以打包成 App 之后，这条路才是真正能让语音跑起来的那条。
+   *
+   * 实现上不加载插件的前端 JS（本项目没有打包器），而是直接调原生桥：
+   *   Capacitor.nativePromise(插件名, 方法名, 参数) → Promise
+   *   插件名固定为 'SpeechRecognition'（见 Android 端 @CapacitorPlugin(name=...)）
+   * start({partialResults:false}) 会 resolve {status, matches:[...]}；
+   * 出错则 reject 一个字符串（如 "No match" / "Network error"）。
+   */
+
+  /* 拿到原生桥。不是原生环境（普通浏览器）时返回 null。*/
+  function nativeBridge() {
+    var cap = global.Capacitor;
+    if (!cap || typeof cap.nativePromise !== 'function') return null;
+    // isNativePlatform 存在时要确认为 true，避免桌面上误判
+    if (typeof cap.isNativePlatform === 'function' && !cap.isNativePlatform()) return null;
+    return cap;
+  }
+
+  /* 探测结果缓存：null=还没探过，true/false=已探明 */
+  var nativeState = null;
+
+  /* 真去问一次原生侧「这台设备有没有可用的识别服务」。
+   * 不靠猜 —— 有些安卓机没装任何识别引擎，调用了才知道。*/
+  function probeNative() {
+    var cap = nativeBridge();
+    if (!cap) { nativeState = false; return Promise.resolve(false); }
+    return cap.nativePromise('SpeechRecognition', 'available', {})
+      .then(function (r) { nativeState = !!(r && r.available); return nativeState; })
+      .catch(function () { nativeState = false; return false; });
+  }
+
+  function nativeReady() { return nativeState === true; }
+
+  /* 原生识别的启动。返回 {promise, stop}，与 webSpeechStart 同形态，
+   * 上层（app.js 的 holdStartGo/holdEnd）可以走同一套收尾逻辑。*/
+  function nativeStart() {
+    var cap = nativeBridge();
+    var settle = {};
+    var promise = new Promise(function (resolve, reject) {
+      settle.resolve = resolve;
+      settle.reject = reject;
+    });
+
+    if (!cap) {
+      var e0 = new Error('不在原生环境里');
+      e0.fatal = true;
+      settle.reject(e0);
+      return { promise: promise, stop: function () {} };
+    }
+
+    var finished = false;
+    function fail(msg) {
+      if (finished) return;
+      finished = true;
+      var err = new Error(msg);
+      err.name = msg;
+      err.raw = { name: msg };
+      /* 区分「真故障」和「没说话/没听懂」：
+         后者不该弹排查弹层，温和提示一句就够了。*/
+      err.silent = /no match|no speech input|didn't understand|no speech/i.test(msg);
+      err.fatal = !err.silent;
+      settle.reject(err);
+    }
+
+    // 先要权限，再开始听。顺序不能反 —— 没权限时 start 会直接 reject。
+    cap.nativePromise('SpeechRecognition', 'requestPermissions', {})
+      .then(function (r) {
+        var st = r && (r.speechRecognition || r.recordAudio);
+        if (st && st !== 'granted') {
+          fail('麦克风权限没给。请在系统设置里允许「记哪儿」使用麦克风。');
+          return null;
+        }
+        return cap.nativePromise('SpeechRecognition', 'start', {
+          language: 'zh-CN',   // 中文优先；引擎不支持时会回退到系统默认
+          maxResults: 1,
+          partialResults: false, // false 才会在结束时 resolve 出结果
+          popup: false          // 别弹系统那个识别面板，我们自己的界面更清楚
+        });
+      })
+      .then(function (r) {
+        if (r === null || finished) return; // 已经 fail 过了
+        finished = true;
+        var m = r && r.matches;
+        settle.resolve((m && m.length) ? String(m[0] || '').trim() : '');
+      })
+      .catch(function (e) {
+        fail(typeof e === 'string' ? e : ((e && (e.message || e.errorMessage)) || '识别失败'));
+      });
+
+    return {
+      promise: promise,
+      stop: function () {
+        try { cap.nativePromise('SpeechRecognition', 'stop', {}).catch(function () {}); }
+        catch (e) { /* 忽略：已经在收尾了 */ }
+      }
+    };
+  }
+
+  /* 当前能用哪条路：'native' | 'tencent' | 'webspeech' | null（只能打字） */
   function mode(settings) {
+    // 原生识别优先：用手机自带引擎、不需要密钥、响应最快
+    if (nativeReady()) return 'native';
     if (global.Settings.asrConfigured(settings)) return 'tencent';
     if (webSpeechSupported()) return 'webspeech';
     return null;
   }
 
-  var ASR = { mode: mode, tencentRecognize: tencentRecognize, webSpeechStart: webSpeechStart, webSpeechSupported: webSpeechSupported };
+  var ASR = {
+    mode: mode,
+    tencentRecognize: tencentRecognize,
+    webSpeechStart: webSpeechStart,
+    webSpeechSupported: webSpeechSupported,
+    nativeStart: nativeStart,
+    nativeBridge: nativeBridge,
+    probeNative: probeNative,
+    nativeReady: nativeReady
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = ASR;
   else global.ASR = ASR;
 })(typeof window !== 'undefined' ? window : globalThis);

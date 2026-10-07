@@ -18,3 +18,12 @@ __shot*.html
 _shots/
 _shot_prep.py
 _chrome-profile*/
+
+# 安卓构建流水线。
+#
+# 暂时不入库：当前用于推送的 Personal Access Token 没有 workflow 权限，
+# GitHub 会拒绝任何创建/修改 .github/workflows/ 的推送。
+# 文件本身是好的，需要手动在 GitHub 网页端新建一次
+# （Add file → Create new file → 路径填 .github/workflows/android.yml → 粘贴内容）。
+# 等 token 补上 workflow 权限，或换成有权限的方式推送后，把这一行删掉即可。
+.github/workflows/android.yml

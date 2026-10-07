@@ -1,0 +1,11 @@
+{
+  "appId": "com.xizo5.jinr",
+  "appName": "记哪儿",
+  "webDir": "app",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
