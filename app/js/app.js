@@ -38,7 +38,7 @@
 
   /* 版本号：跟 sw.js 里的 CACHE 保持一致。改代码后要同时改这两处 + sw.js 的 CACHE，
      改完手机上的旧缓存才会换掉。 */
-  var APP_VERSION = '28';
+  var APP_VERSION = '29';
 
   var state = {
     records: [],
